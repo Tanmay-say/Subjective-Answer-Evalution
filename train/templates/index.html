@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subjective Answer Scoring</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h2>Answer the Question</h2>
+
+    <!-- Name Input Form -->
+    <form id="nameForm">
+        <label for="name">Your Name:</label>
+        <input type="text" id="name" name="name" required>
+        <button type="submit">Start</button>
+    </form>
+
+    <!-- Question Container (Initially Hidden) -->
+    <div id="questionContainer" style="display:none;">
+        <h3 id="questionText"></h3>
+        <form id="answerForm">
+            <textarea id="answer" name="answer" rows="5" cols="40" required></textarea><br><br>
+            <input type="hidden" id="correctAnswer" name="correct_answer">
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+
+    <h3 id="result"></h3>
+
+    <script>
+        let userName = "";
+
+        $(document).ready(function () {
+            console.log("Page loaded, jQuery ready.");
+
+            // Handle name submission
+            $("#nameForm").submit(function (event) {
+                event.preventDefault();
+                userName = $("#name").val().trim();
+
+                if (userName === "") {
+                    alert("Please enter your name!");
+                    return;
+                }
+
+                console.log("Fetching question for:", userName);
+
+                $.ajax({
+                    type: "GET",
+                    url: "/get_question",
+                    success: function (response) {
+                        console.log("Received response:", response);
+
+                        $("#questionText").text(response.question);
+                        $("#correctAnswer").val(response.correct_answer);
+                        $("#nameForm").hide();
+                        $("#questionContainer").show();
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error fetching question:", error);
+                        alert("Failed to fetch question. Try again later.");
+                    }
+                });
+            });
+
+            // Handle answer submission
+            $("#answerForm").submit(function (event) {
+                event.preventDefault();
+                let userAnswer = $("#answer").val().trim();
+                let correctAnswer = $("#correctAnswer").val();
+
+                if (userAnswer === "") {
+                    alert("Please write your answer before submitting!");
+                    return;
+                }
+
+                console.log("Submitting answer:", userAnswer);
+
+                $.ajax({
+                    type: "POST",
+                    url: "/predict",
+                    contentType: "application/json",
+                    data: JSON.stringify({
+                        name: userName,
+                        answer: userAnswer,
+                        correct_answer: correctAnswer
+                    }),
+                    success: function (response) {
+                        console.log("Received prediction response:", response);
+
+                        $("#result").html(`
+                            <strong>${response.name}, your predicted score is:</strong> ${response.score} <br>
+                            <strong>Cosine Similarity:</strong> ${response.cosine_similarity} <br>
+                            <strong>Word Mover's Distance:</strong> ${response.wmd_score}
+                        `);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error submitting answer:", error);
+                        alert("Failed to submit answer. Try again later.");
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
