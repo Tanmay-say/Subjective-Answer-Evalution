@@ -1,13 +1,14 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 import pandas as pd
 import random
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key'  # Required for session storage
 
-# Load dataset and ensure required columns exist
+# Load dataset
 try:
     df = pd.read_csv('../train/processed_dataset.csv')
-    df.columns = df.columns.str.strip().str.lower()  # Normalize column names
+    df.columns = df.columns.str.strip().str.lower()
     required_columns = {"question", "desired_answer"}
 
     if not required_columns.issubset(df.columns):
@@ -15,7 +16,7 @@ try:
 
 except Exception as e:
     print(f"Error loading dataset: {e}")
-    df = pd.DataFrame(columns=["question", "desired_answer"])  # Empty DataFrame fallback
+    df = pd.DataFrame(columns=["question", "desired_answer"])
 
 
 def get_random_question():
@@ -29,6 +30,7 @@ def get_random_question():
 
 @app.route('/')
 def index():
+    session.clear()  # Reset session on home page
     return render_template('index.html')
 
 
@@ -40,7 +42,16 @@ def about():
 @app.route('/demo', methods=['GET', 'POST'])
 def demo():
     """Handles the demo page for evaluating answers."""
-    question, desired_answer = get_random_question()
+
+    # If no question is stored, generate one
+    if 'question' not in session or 'desired_answer' not in session:
+        question, desired_answer = get_random_question()
+        session['question'] = question
+        session['desired_answer'] = desired_answer
+    else:
+        question = session['question']
+        desired_answer = session['desired_answer']
+
     result = None
 
     if request.method == 'POST':
@@ -80,5 +91,5 @@ def generate_feedback(score):
         return "Your answer differs significantly from the expected response. Please review the material."
 
 
-if __name__ == '_main_':
+if __name__ == '__main__':  
     app.run(debug=True)
