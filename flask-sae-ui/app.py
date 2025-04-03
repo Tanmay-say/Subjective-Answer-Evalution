@@ -5,17 +5,25 @@ import tensorflow as tf
 import gensim.downloader as api
 from gensim.models import KeyedVectors
 from nltk.tokenize import word_tokenize
-
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
 import nltk
-nltk.download('all')
+import os
 
-# Load pre-trained Word2Vec model
+# Download necessary NLTK resources
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'
+
+# Load Word2Vec model (Google News)
+print("Loading Word2Vec model...")
 model_path = api.load("word2vec-google-news-300", return_path=True)
 word_vectors = KeyedVectors.load_word2vec_format(model_path, binary=True, limit=50000)
 
@@ -30,21 +38,29 @@ except Exception as e:
     print(f"Error loading dataset: {e}")
     df = pd.DataFrame(columns=["question", "desired_answer"])
 
-# Load trained LSTM model & tokenizer
+# Load trained LSTM model
+print("Loading LSTM model...")
 custom_objects = {"mse": tf.keras.losses.MeanSquaredError()}  # Fix MSE loss loading
-model = tf.keras.models.load_model("../train/lstm_model.h5", custom_objects=custom_objects)
+model = tf.keras.models.load_model("../train/sae.h5", custom_objects=custom_objects)
 
+# Load the tokenizer
 with open("../train/tokenizer.pkl", "rb") as handle:
     tokenizer = pickle.load(handle)
 
-# Define max sequence length
+if not isinstance(tokenizer, Tokenizer):
+    print("❌ Tokenizer is corrupted! Re-saving it...")
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(["This is a test sentence"])
+    with open("../train/tokenizer.pkl", "wb") as handle:
+        pickle.dump(tokenizer, handle)
+    print("✅ New tokenizer.pkl saved. Try running app.py again!")
+
 MAX_LENGTH = 50
 
 # Initialize NLP tools
 stop_words = set(stopwords.words("english"))
 lemmatizer = WordNetLemmatizer()
 
-# Function to preprocess text
 def preprocess_text(text):
     """Tokenizes, removes stopwords, and lemmatizes the input text."""
     if not isinstance(text, str) or text.strip() == "":
@@ -66,7 +82,7 @@ def compute_wmd(text1, text2):
 
     try:
         wmd = word_vectors.wmdistance(text1_tokens, text2_tokens)
-        return wmd if wmd != float("inf") else 2
+        return max(0, min(wmd, 2))  # Normalize WMD score
     except Exception:
         return 2
 
@@ -82,12 +98,9 @@ def compute_cosine_similarity(text1, text2):
 
     try:
         text_vectors = vectorizer.transform([text1, text2])
-        return cosine_similarity(text_vectors[0], text_vectors[1])[0][0]
+        return max(0, min(cosine_similarity(text_vectors[0], text_vectors[1])[0][0], 1))
     except Exception:
         return 0.0
-
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Required for session storage
 
 def get_random_question():
     """Get a random question and its desired answer from the dataset."""
@@ -110,7 +123,6 @@ def about():
 def demo():
     """Handles the demo page for evaluating answers."""
 
-    # If no question is stored, generate one
     if 'question' not in session or 'desired_answer' not in session:
         question, desired_answer = get_random_question()
         session['question'] = question
@@ -125,7 +137,6 @@ def demo():
     if request.method == 'POST':
         student_answer = request.form.get('student_answer', "")
 
-        # Preprocess student answer and desired answer
         student_answer_processed = preprocess_text(student_answer)
         desired_answer_processed = preprocess_text(desired_answer)
 
@@ -138,15 +149,23 @@ def demo():
         padded_seq = pad_sequences(seq, maxlen=MAX_LENGTH)
 
         # Predict score using trained LSTM model
-        predicted_score = model.predict(padded_seq)[0][0]
+        predicted_score = model.predict(padded_seq)[0][0]  # Expecting a score in range [0, 1]
 
-        # Normalize similarity scores
-        similarity_score = (1 - min(wmd_score, 1)) * 5
-        similarity_score = max(0, min(5, similarity_score))
+        # Normalize similarity scores to 0-5
+        wmd_normalized = (1 - min(wmd_score / 2, 1)) * 5
+        cosine_normalized = cosine_sim * 5
 
-        # Weighted combination of LSTM prediction and similarity score
-        final_score = (0.7 * predicted_score) + (0.3 * similarity_score)
-        final_score = max(0, min(5, final_score))
+        # Combine scores
+        final_score = (0.6 * predicted_score * 5) + (0.4 * (wmd_normalized + cosine_normalized) / 2)
+
+        final_score = max(0, min(5, final_score))  # Ensure within 0-5
+
+        print("Student Answer Processed:", student_answer_processed)
+        print("Desired Answer Processed:", desired_answer_processed)
+        print("WMD Score:", wmd_score)
+        print("Cosine Similarity:", cosine_sim)
+        print("LSTM Predicted Score:", predicted_score)
+        print("Final Score (out of 5):", final_score)
 
         result = {
             'score': round(final_score, 2),
@@ -155,7 +174,8 @@ def demo():
             'feedback': generate_feedback(final_score)
         }
 
-    return render_template('demo.html', question=question, desired_answer=desired_answer, student_answer=student_answer, result=result)
+    return render_template('demo.html', question=question, desired_answer=desired_answer, student_answer=student_answer,
+                           result=result)
 
 def generate_feedback(score):
     """Generates feedback based on the similarity score."""
