@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Answer Evaluation System</title>
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        
+        .grade {
+            font-size: 1.5em;
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Subjective Answer Evaluation</h1>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label>Question:</label>
+                <textarea name="question" required>{{ request.form.question if request.form }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Model Answer:</label>
+                <textarea name="desired_answer" required>{{ request.form.desired_answer if request.form }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Student Answer:</label>
+                <textarea name="student_answer" required>{{ request.form.student_answer if request.form }}</textarea>
+            </div>
+            
+            <button type="submit">Evaluate Answer</button>
+        </form>
+
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        {% if grade is not none %}
+            <div class="result">
+                <h3>Evaluation Result</h3>
+                <div class="grade">Score: {{ grade }}/5.0</div>
+                <p>0 = Incorrect, 5 = Perfect Answer</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

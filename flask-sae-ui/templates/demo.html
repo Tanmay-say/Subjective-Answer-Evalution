@@ -52,12 +52,12 @@
                     <div class="flex items-center">
                         <div class="w-full">
                             <div class="flex justify-between mb-1">
-                                <span class="text-base font-medium text-indigo-700">Similarity Score</span>
-                                <span class="text-sm font-medium text-indigo-700">{{ result.score }}%</span>
+                                <span class="text-base font-medium text-indigo-700">Score</span>
+                                <span class="text-sm font-medium text-indigo-700">{{ result.score }}/5</span>
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-2.5">
                                 <div class="bg-indigo-600 h-2.5 rounded-full"
-                                     style="width: {{ result.score }}%"></div>
+                                     style="width: {{ result.score*20 }}%"></div>
                             </div>
                         </div>
                     </div>
