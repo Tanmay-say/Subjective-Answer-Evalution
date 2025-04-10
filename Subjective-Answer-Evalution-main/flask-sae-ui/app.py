@@ -29,19 +29,21 @@ word_vectors = KeyedVectors.load_word2vec_format(model_path, binary=True, limit=
 
 # Load dataset
 try:
-    df = pd.read_csv("../train/processed_dataset.csv")
-    df.columns = df.columns.str.strip().str.lower()
+    df = pd.read_csv("../train/UPDATED_DATA.csv")
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    print("Loaded columns:", df.columns.tolist())  # Debugging
+
     required_columns = {"question", "desired_answer"}
     if not required_columns.issubset(df.columns):
-        raise KeyError(f"Required columns {required_columns} are missing!")
+        raise KeyError(f"Required columns {required_columns} are missing! Found: {df.columns.tolist()}")
 except Exception as e:
-    print(f"Error loading dataset: {e}")
+    print(f"❌ Error loading dataset: {e}")
     df = pd.DataFrame(columns=["question", "desired_answer"])
 
 # Load trained LSTM model
 print("Loading LSTM model...")
 custom_objects = {"mse": tf.keras.losses.MeanSquaredError()}
-model = tf.keras.models.load_model("../train/sae.h5", custom_objects=custom_objects)
+model = tf.keras.models.load_model("../train/saef.keras", custom_objects=custom_objects)
 
 # Load tokenizer
 try:
@@ -74,7 +76,7 @@ def compute_wmd(text1, text2):
         return float("inf")
     try:
         wmd_score = word_vectors.wmdistance(text1_tokens, text2_tokens)
-        print(f"WMD Score: {wmd_score}")  # Debugging output
+        print(f"WMD Score: {wmd_score}")
         return wmd_score
     except Exception as e:
         print(f"❌ WMD Error: {e}")
@@ -91,7 +93,7 @@ def compute_cosine_similarity(text1, text2):
     try:
         vecs = vectorizer.transform([text1, text2])
         cos_sim = cosine_similarity(vecs[0], vecs[1])[0][0]
-        print(f"Cosine Similarity: {cos_sim}")  # Debugging output
+        print(f"Cosine Similarity: {cos_sim}")
         return cos_sim
     except Exception as e:
         print(f"❌ Cosine Similarity Error: {e}")
@@ -126,38 +128,49 @@ def demo():
     result = None
 
     if request.method == 'POST':
-        student_answer = request.form.get('student_answer', "")
+        student_answer = request.form.get('student_answer', "").strip()
 
-        student_processed = preprocess_text(student_answer)
-        desired_processed = preprocess_text(desired_answer)
+        if not student_answer:
+            result = {
+                'score': 0.0,
+                'cosine_similarity': 0.0,
+                'wmd_score': float('inf'),
+                'feedback': generate_feedback(0.0)
+            }
+        elif student_answer.strip().lower() == desired_answer.strip().lower():
+            result = {
+                'score': 5.0,
+                'cosine_similarity': 1.0,
+                'wmd_score': 0.0,
+                'feedback': generate_feedback(5.0)
+            }
+        else:
+            student_processed = preprocess_text(student_answer)
+            desired_processed = preprocess_text(desired_answer)
 
-        wmd_score = compute_wmd(student_processed, desired_processed)
-        cosine_sim = compute_cosine_similarity(student_processed, desired_processed)
+            wmd_score = compute_wmd(student_processed, desired_processed)
+            cosine_sim = compute_cosine_similarity(student_processed, desired_processed)
 
-        seq = tokenizer.texts_to_sequences([student_processed])
-        padded_seq = pad_sequences(seq, maxlen=MAX_LENGTH)
+            seq = tokenizer.texts_to_sequences([student_processed])
+            padded_seq = pad_sequences(seq, maxlen=MAX_LENGTH)
 
-        predicted_score = model.predict(padded_seq)[0][0]
-        print(f"LSTM Predicted Score: {predicted_score}")  # Debugging output
+            predicted_score = model.predict(padded_seq)[0][0]
+            print(f"LSTM Predicted Score: {predicted_score}")
 
-        predicted_score = max(0, min(predicted_score, 1))  # Clamp between 0 and 1
+            predicted_score = max(0, min(predicted_score, 1))  # Clamp between 0 and 1
 
-        wmd_normalized = (1 - min(wmd_score / 2, 1)) * 3
-        cosine_normalized = cosine_sim * 3
+            wmd_normalized = (1 - min(wmd_score / 2, 1)) * 3
+            cosine_normalized = cosine_sim * 3
 
-        # Adjusted final score calculation
-        final_score = (0.6 * predicted_score * 5) + (0.4 * (wmd_normalized + cosine_normalized) / 2)
-        final_score = max(0, min(5, final_score))  # Clamp between 0-5
+            final_score = (0.6 * predicted_score * 5) + (0.4 * (wmd_normalized + cosine_normalized) / 2)
+            final_score = max(0, min(5, final_score))  # Clamp between 0-5
 
-        print("Processed Student Answer:", student_processed)
-        print("Final Score (Before Clamping):", final_score)
-
-        result = {
-            'score': round(final_score, 2),
-            'cosine_similarity': round(cosine_sim, 2),
-            'wmd_score': round(wmd_score, 2),
-            'feedback': generate_feedback(final_score)
-        }
+            result = {
+                'score': round(final_score, 2),
+                'cosine_similarity': round(cosine_sim, 2),
+                'wmd_score': round(wmd_score, 2),
+                'feedback': generate_feedback(final_score)
+            }
 
     return render_template('demo.html', question=question, desired_answer=desired_answer,
                            student_answer=student_answer, result=result)
